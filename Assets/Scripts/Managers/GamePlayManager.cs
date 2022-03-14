@@ -4,6 +4,7 @@ using System.Linq;
 using DG.Tweening;
 using System;
 using System.Collections;
+using UnityEngine.SceneManagement;
 public enum GameState
 {
     GenerateMap,
@@ -49,8 +50,10 @@ public class GamePlayManager : MonoBehaviour
     public Node[,] gridArray;
     PathFinder pathFinder;
     List<Node> path = new List<Node>();
-
+    // choose how many balls to be spawned
     [SerializeField] int ballToSpawn = 3;
+    // reset best score --- testing purpose
+    [SerializeField] bool needReset;
     private void Awake()
     {
         line = GetComponent<LineRenderer>();
@@ -61,6 +64,13 @@ public class GamePlayManager : MonoBehaviour
             instance = this;
         }
         gridArray = new Node[columns, rows];
+        if(needReset)
+        {
+            if(PlayerPrefs.HasKey("bestScore"))
+            {
+                PlayerPrefs.DeleteKey("bestScore");
+            }
+        }
     }
     void Start()
     {
@@ -104,6 +114,10 @@ public class GamePlayManager : MonoBehaviour
         {
             PauseGameManager();
         }
+        if(Input.GetKeyDown(KeyCode.L))// for test lost game
+        {
+            SetLose();
+        }
     }
     //generate a new Grid;
     void GenerateNewGrid(int _rows, int _columns)
@@ -127,14 +141,19 @@ public class GamePlayManager : MonoBehaviour
         }
         Debug.Log(nodeList.Count);
     }
-    void GetBallToSpawn(int _ballAmountToSpawn)
+    void GetBallToSpawn(int _ballAmountToSpawn)// pre-spawn the balls and show them as the next balls
     {
-        for (int i = 0; i < _ballAmountToSpawn; i++)
-        {
+        var freeNodes = nodeList.Where(node => node.occupiedBall == null).OrderBy(b => UnityEngine.Random.value).ToList();
+        foreach (var freeNode in freeNodes.Take(_ballAmountToSpawn))
+        {   
             float spawnRate = UnityEngine.Random.Range(0f, 1f);
             Ball newBall;
             newBall = SelectBallToSpawn(spawnRate);
-            newBall.gameObject.SetActive(false);
+            newBall.gameObject.SetActive(true);
+            newBall.transform.position = freeNode.transform.position;
+            newBall.transform.localScale = Vector2.zero;
+            newBall.transform.DOScale (new Vector2(0.3f,0.3f),0.1f);
+            newBall.GetComponentInChildren<SpriteRenderer>().sortingOrder = 2;// to make the pre-spawn ball behind the real ball
             ballToSpawnList.Add(newBall);
             SwitchState(GameState.SelectBall);
         }
@@ -144,13 +163,33 @@ public class GamePlayManager : MonoBehaviour
     //Spawn ball every turn
     IEnumerator SpawnBalls(int _ballAmountToSpawn)
     {
+        //yield return new WaitForSeconds(spawnTime);
+        //var freeNodes = nodeList.Where(node => node.occupiedBall == null).OrderBy(b =>UnityEngine.Random.value).ToList();
+        //foreach (var freeNode in freeNodes.Take(_ballAmountToSpawn))
+        //{
+
+        //    Spawn(freeNode.transform.position, ballToSpawnList.First());
+        //    ballToSpawnList.RemoveAt(0);
+        //}
+        //ballToSpawnList.Clear();
+        //SwitchState(GameState.GetballToSpawn);
+        //CheckLoseCondition();
         yield return new WaitForSeconds(spawnTime);
-        var freeNodes = nodeList.Where(node => node.occupiedBall == null).OrderBy(b =>UnityEngine.Random.value).ToList();
-        foreach (var freeNode in freeNodes.Take(_ballAmountToSpawn))
+       
+        foreach (var ball in ballToSpawnList.Take(_ballAmountToSpawn))
         {
-           
-            Spawn(freeNode.transform.position, ballToSpawnList.First());
-            ballToSpawnList.RemoveAt(0);
+            Node nodeToCheck = GetNodebyPosition(ball.transform.position);// get the node of the pre-Spawn ball position to check if it had another ball on it yet
+            if (nodeToCheck.occupiedBall == null)
+            {
+                Spawn(nodeToCheck.transform.position, ball);
+
+            }
+            else // if the node already has the ball on it then find in freenode to get another postition to spawn
+
+            {
+                var freeNodes = nodeList.Where(node => node.occupiedBall == null).OrderBy(b => UnityEngine.Random.value).ToList();
+                Spawn(freeNodes.First().transform.position, ball);
+            }
         }
         ballToSpawnList.Clear();
         SwitchState(GameState.GetballToSpawn);
@@ -159,7 +198,7 @@ public class GamePlayManager : MonoBehaviour
     //spawn 1 single ball, use in SpawnBalls function for spawning many balls
     void Spawn(Vector2 _spawnPos,Ball _ballToSpawn)
     {
-        _ballToSpawn.gameObject.SetActive(true);
+        _ballToSpawn.GetComponentInChildren<SpriteRenderer>().sortingOrder = 3;
         _ballToSpawn.OnSpawnAnimation();// Do animation whenever spawn a ball;
         _ballToSpawn.transform.position = _spawnPos;
         ballList.Add(_ballToSpawn);
@@ -175,14 +214,14 @@ public class GamePlayManager : MonoBehaviour
 
     }
 
-    private static Ball SelectBallToSpawn(float spawnRate)
+    private static Ball SelectBallToSpawn(float spawnRate)// auto pick what kind of ball to be spawned
     {
         Ball newBall;
         if (spawnRate < 0.80f)
         {
             newBall = PoolingManager.instance.ballQueue.Dequeue();
         }
-        else if (spawnRate < .90f)
+        else if (spawnRate < .95f)
         {
             newBall = PoolingManager.instance.ghostBallQueue.Dequeue();
         }
@@ -195,7 +234,7 @@ public class GamePlayManager : MonoBehaviour
         return newBall;
     }
 
-    public void SelectBall(Node _selectedNode)//select ball to move
+    public void SelectBall(Node _selectedNode)//select ball to be moved
     {
         DeSelectNode();
         _selectedNode.selectedballSprite.SetActive(true);
@@ -270,9 +309,6 @@ public class GamePlayManager : MonoBehaviour
                 StartCoroutine(SpawnBalls(ballToSpawn));
                 break;
             case GameState.GetballToSpawn:
-                SaveManager.instance.saveData.nodeDataList = nodeList;
-                SaveManager.instance.saveData.currentGamestateData  = currentState;
-                SaveManager.instance.SaveGame();
                 GetBallToSpawn(ballToSpawn);
                 UIManager.instance.DisplayBall(ballToSpawnList);
 
@@ -301,7 +337,7 @@ public class GamePlayManager : MonoBehaviour
                 {
                     if (tempNode.occupiedBall.type == BallType.Rainbow)
                     {
-                        tempNode = GetNodebyPosition(new Vector2(_checkNode.transform.position.x + 1, _checkNode.transform.position.y));
+                        tempNode = GetNodebyPosition(new Vector2(_checkNode.transform.position.x+1, _checkNode.transform.position.y));
                     }
                     if (nodeToCompare.occupiedBall.colorValue == tempNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow)
                     {
@@ -336,7 +372,7 @@ public class GamePlayManager : MonoBehaviour
             {
                 if (nodeToCompare.occupiedBall != null)
                 {
-                    if (/*tempNode.occupiedBall.type == BallType.Rainbow &&*/ tempNode.occupiedBall.colorValue != GetNodebyPosition(new Vector2(_checkNode.transform.position.x - 1, _checkNode.transform.position.y)).occupiedBall.colorValue && count<4)
+                    if (tempNode.occupiedBall.type == BallType.Rainbow && tempNode.occupiedBall.colorValue != GetNodebyPosition(new Vector2(_checkNode.transform.position.x - 1, _checkNode.transform.position.y)).occupiedBall.colorValue && count<4)
                     {
                         count = 0;
                         checkNodeList.Clear();
@@ -675,17 +711,19 @@ public class GamePlayManager : MonoBehaviour
         return null;
 
     }
-    void ExplodeBalls()
+    void ExplodeBalls()//explode if 5 or more balls has same color in line
     {
+        SoundManager.instance.PlaySound("BallExplode");
         Debug.Log(checkNodeList.Count);
-        UIManager.instance.UpdateAndDisplayScore(checkNodeList.Count);
         foreach (var checkNode in checkNodeList)
         {
             checkNode.occupiedBall.OnExplode();
+            
             checkNode.occupiedBall.gameObject.SetActive(false);
             PoolingManager.instance.DeActiveBall(checkNode.occupiedBall);
             checkNode.occupiedBall = null;
         }
+        UIManager.instance.UpdateAndDisplayScore(checkNodeList.Count);
         OnUpdateScoreGame?.Invoke(checkNodeList.Count);
         checkNodeList.Clear();
 
@@ -714,9 +752,17 @@ public class GamePlayManager : MonoBehaviour
         }
         OnPauseGame?.Invoke(currentState);
     }
+    public void ReplayGame()
+    {
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+    
     public void ExitGame()
     {
         Application.Quit();
     }
-
+    void SetLose() // for testing purpose
+    {
+        SwitchState(GameState.Lose);
+    }
 }

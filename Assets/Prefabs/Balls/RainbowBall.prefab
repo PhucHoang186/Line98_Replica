@@ -129,8 +129,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   spawnTime: 0.2
   ballAni: {fileID: 0}
+  ballPoint: 3
   explodeFX: {fileID: 2714671950190288675, guid: 653f05887d93ca14b9d64b2a27840992, type: 3}
-  occupiedNode: {fileID: 0}
   colorValue: 0
   type: 1
 --- !u!95 &1166550746

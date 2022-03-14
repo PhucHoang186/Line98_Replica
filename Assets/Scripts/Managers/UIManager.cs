@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
 using UnityEngine.UI;
+using System.Collections;
 public class UIManager : MonoBehaviour
 {
     public static UIManager instance;
@@ -15,7 +16,10 @@ public class UIManager : MonoBehaviour
     float timer;
     [SerializeField] TMP_Text timerText;
     //game menu
-    [SerializeField] GameObject PauseMenu;
+    [SerializeField] GameObject pauseMenu;
+    //lost menu
+    [SerializeField] GameObject lostMenu;
+    [SerializeField] TMP_Text displayFinalScoreText;
     //ball display
     [SerializeField] Image[] ballImages;
     private void Awake()
@@ -25,7 +29,8 @@ public class UIManager : MonoBehaviour
             instance = this;
         }
         UpdateAndDisplayScore(0);
-        PauseMenu.SetActive(false);
+        pauseMenu.SetActive(false); 
+        lostMenu.SetActive(false);
     }
     void UpdateTimer()
     {
@@ -47,7 +52,7 @@ public class UIManager : MonoBehaviour
         }
         else
         {
-            bestScore = 100;
+            bestScore = 0;
         }
         DisplayBestScore();
     }
@@ -73,6 +78,7 @@ public class UIManager : MonoBehaviour
     {
         GamePlayManager.OnUpdateScoreGame += UpdateAndDisplayScore;
         GamePlayManager.OnLosingGame += UpdateBestScore;
+        GamePlayManager.OnLosingGame += UpdateLostMenu;
         GamePlayManager.OnPauseGame += UpdatePauseMenu;
 
     }
@@ -80,17 +86,18 @@ public class UIManager : MonoBehaviour
     {
         GamePlayManager.OnUpdateScoreGame -= UpdateAndDisplayScore;
         GamePlayManager.OnLosingGame -= UpdateBestScore;
+        GamePlayManager.OnLosingGame -= UpdateLostMenu;
         GamePlayManager.OnPauseGame -= UpdatePauseMenu;
     }
     public void UpdatePauseMenu(GameState _currentState)
     {
         if(_currentState != GameState.Pause)
         {
-            PauseMenu.SetActive(false);
+            pauseMenu.SetActive(false);
         }
         else
         {
-            PauseMenu.SetActive(true);
+            pauseMenu.SetActive(true);
         }
     }
     public void DisplayBall(List<Ball> _ballList)
@@ -106,6 +113,21 @@ public class UIManager : MonoBehaviour
 
             i++;
         }
+    }
+    public void UpdateLostMenu(int _finalScore)// just default value to using delegate OnLosingGame
+    {
+        lostMenu.SetActive(true);
+        StartCoroutine(DisplayFinalScore(_finalScore));
 
+    }
+    IEnumerator DisplayFinalScore(int _score)
+    {
+        int count = 1;
+        while(count<=_score)
+        {
+            displayFinalScoreText.text = count.ToString();
+            count++;
+            yield return new WaitForSecondsRealtime(0.05f);
+        }
     }
 }

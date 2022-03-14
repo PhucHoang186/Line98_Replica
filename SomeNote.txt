@@ -1,0 +1,26 @@
+Game feature:
++ Graphic:
+-	Timer.
+-	Score Display.
+-	Best Score Display.
+-	Next Ball Display Images.
+-	Next Ball Display In Board.
+-	Ball Idle, Moving, Explode FX, Easy Add More Ball Colors.
+-	Pause Menu, Lose Menu.
++ Program:
+-	Using Path Finding (not A* Path Finding).
+-	Objects Pooling (Balls).
+-	Game State Enum.
+-	Save Best Score (Not yet implement save current game state, can explant why if needed).
+Extra feature:
++ 3 types of balls:
+-	Normal Ball: moving everywhere as long as there a path to it.
+-	Ghost Ball: can move every where despite there a path or not.
+-	Rainbow Ball: can interact with every ball with every color.
++ Game Sound:
+-	Background Music
+-	Move Sound
+-	Explode Sound
+Some Notes: 
+-	You can reset best score for testing by check the needReset checkbox in GameplayManager Script (locate in “Generate grid” Game Object)
+-	You can switch to lose state for testing by press  ”L” when in play mode.

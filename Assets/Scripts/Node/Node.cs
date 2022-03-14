@@ -1,11 +1,11 @@
 using UnityEngine;
 using System.Linq;
 [System.Serializable]
-public class Node :MonoBehaviour
+public class Node : MonoBehaviour
 {
     //Hover 
-    [SerializeField]GameObject hightlightSprite;
-    [SerializeField]public GameObject selectedballSprite;
+    [SerializeField] GameObject hightlightSprite;
+    [SerializeField] public GameObject selectedballSprite;
     //manager
     public Ball occupiedBall; // the ball on this node
     [HideInInspector] public bool isSelected;
@@ -23,7 +23,7 @@ public class Node :MonoBehaviour
     }
     private void OnMouseDown()
     {
-        
+
         if (GamePlayManager.instance.currentState == GameState.SelectBall)
         {
             if (occupiedBall != null)
@@ -49,5 +49,7 @@ public class Node :MonoBehaviour
             }
         }
     }
- 
+
+
 }
+
