@@ -7,10 +7,11 @@ using System.Collections;
 public enum GameState
 {
     GenerateMap,
-    Win,
     Lose,
+    Pause,
     SelectBall,
     SelectNodeToPlaceBall,
+    GetballToSpawn,
     SpawnBall
 }
 public class GamePlayManager : MonoBehaviour
@@ -18,6 +19,8 @@ public class GamePlayManager : MonoBehaviour
     //delegate
     public static event Action<int> OnLosingGame;
     public static event Action<int> OnUpdateScoreGame;
+    public static event Action<GameState> OnPauseGame;
+
     // line renderer
     LineRenderer line;
     public static GamePlayManager instance;
@@ -33,11 +36,11 @@ public class GamePlayManager : MonoBehaviour
     //List Balls and Nodes
     public List<Node> nodeList;
     List<Ball> ballList;
+    List<Ball> ballToSpawnList;// List contains balls wait to be spawn on board
     List<Node> checkNodeList;
     //prefabs
     [Header("Prefabs")]
     [SerializeField] Node nodePrefab;
-    //[SerializeField] Ball ballPrefab;
     //Game State
     public GameState currentState;
     //Node
@@ -47,8 +50,7 @@ public class GamePlayManager : MonoBehaviour
     PathFinder pathFinder;
     List<Node> path = new List<Node>();
 
-    //ball types for spawn rate
-    Ball[] balls;
+    [SerializeField] int ballToSpawn = 3;
     private void Awake()
     {
         line = GetComponent<LineRenderer>();
@@ -63,13 +65,13 @@ public class GamePlayManager : MonoBehaviour
     void Start()
     {
         SwitchState(GameState.GenerateMap);
+
     }
     //Path Finding
     public bool FindPath(int _startX,int _startY, int _endX, int _endY)
     {
         pathFinder.SetDistance(_startX, _startY);
         path = pathFinder.SetPath(_endX, _endY);
-        Debug.Log("run");
         if (path != null)
         {
 
@@ -96,13 +98,20 @@ public class GamePlayManager : MonoBehaviour
     {
         line.enabled = false;
     }
-     
+    private void Update()
+    {
+        if(Input.GetKeyDown(KeyCode.Escape))
+        {
+            PauseGameManager();
+        }
+    }
     //generate a new Grid;
     void GenerateNewGrid(int _rows, int _columns)
     {
         nodeList = new List<Node>();
         ballList = new List<Ball>();
         checkNodeList = new List<Node>();
+        ballToSpawnList = new List<Ball>(); 
         Camera.main.transform.position = new Vector3((_rows / 2) + 0.5f, (_columns / 2) + 1f, -10);// focus the camera the the center of the grid just generate
         
         for (int x = 0; x < _columns; x++)
@@ -118,6 +127,20 @@ public class GamePlayManager : MonoBehaviour
         }
         Debug.Log(nodeList.Count);
     }
+    void GetBallToSpawn(int _ballAmountToSpawn)
+    {
+        for (int i = 0; i < _ballAmountToSpawn; i++)
+        {
+            float spawnRate = UnityEngine.Random.Range(0f, 1f);
+            Ball newBall;
+            newBall = SelectBallToSpawn(spawnRate);
+            newBall.gameObject.SetActive(false);
+            ballToSpawnList.Add(newBall);
+            SwitchState(GameState.SelectBall);
+        }
+        
+
+    }
     //Spawn ball every turn
     IEnumerator SpawnBalls(int _ballAmountToSpawn)
     {
@@ -125,29 +148,30 @@ public class GamePlayManager : MonoBehaviour
         var freeNodes = nodeList.Where(node => node.occupiedBall == null).OrderBy(b =>UnityEngine.Random.value).ToList();
         foreach (var freeNode in freeNodes.Take(_ballAmountToSpawn))
         {
-            Spawn(freeNode.transform.position);
+           
+            Spawn(freeNode.transform.position, ballToSpawnList.First());
+            ballToSpawnList.RemoveAt(0);
         }
-        SwitchState(GameState.SelectBall);
+        ballToSpawnList.Clear();
+        SwitchState(GameState.GetballToSpawn);
         CheckLoseCondition();
     }
     //spawn 1 single ball, use in SpawnBalls function for spawning many balls
-    void Spawn(Vector2 _spawnPos)
+    void Spawn(Vector2 _spawnPos,Ball _ballToSpawn)
     {
-        float spawnRate = UnityEngine.Random.Range(0f, 1f);
-        Ball newBall;
-        newBall = SelectBallToSpawn(spawnRate);
-        newBall.transform.position = _spawnPos;
-        newBall.gameObject.SetActive(true);
-        ballList.Add(newBall);
-        newBall.transform.parent = transform;
+        _ballToSpawn.gameObject.SetActive(true);
+        _ballToSpawn.OnSpawnAnimation();// Do animation whenever spawn a ball;
+        _ballToSpawn.transform.position = _spawnPos;
+        ballList.Add(_ballToSpawn);
+        _ballToSpawn.transform.parent = transform;
         // add Ball to Node
         Node occupiedNode = nodeList.Where(node => (Vector2)node.transform.position == _spawnPos).First();// get the node at the ball position and at the ball to the node's ocuppied ball parameter
-        occupiedNode.occupiedBall = newBall;
-        //if (CheckExplode(occupiedNode))
-        //{
-        //    Debug.Log("Explode");
-        //    //ExplodeBalls();
-        //}
+        occupiedNode.occupiedBall = _ballToSpawn;
+        if (CheckExplode(occupiedNode))
+        {
+            Debug.Log("Explode");
+            ExplodeBalls();
+        }
 
     }
 
@@ -177,30 +201,24 @@ public class GamePlayManager : MonoBehaviour
         _selectedNode.selectedballSprite.SetActive(true);
         _selectedNode.isSelected = true;
         currentSelectedNode = _selectedNode;
+        currentSelectedNode.occupiedBall.ballAni.SetBool("isSelected", true);
         SwitchState(GameState.SelectNodeToPlaceBall);
     }
     public void SelectNode(Node _newNode) // select node to move the ball to
     {
+
+
         DeSelectNode();
 
         bool hasPath = FindPath((int)currentSelectedNode.transform.position.x, (int)currentSelectedNode.transform.position.y, (int)_newNode.transform.position.x, (int)_newNode.transform.position.y);
-
-        if (hasPath && currentSelectedNode.occupiedBall.type != BallType.Ghost)
+        if (currentSelectedNode.occupiedBall.type == BallType.Ghost)
         {
             MoveBall(currentSelectedNode, _newNode);
         }
-        else if (currentSelectedNode.occupiedBall.type == BallType.Ghost)// if it is the ghost ball then it can move everywhere
+        else if (hasPath)
         {
             MoveBall(currentSelectedNode, _newNode);
         }
-        if (CheckExplode(_newNode))
-        {
-            Debug.Log("Explode");
-            ExplodeBalls();
-
-            currentSelectedNode = _newNode;
-        }
-        SwitchState(GameState.SpawnBall);
 
     }
     void MoveBall(Node _currentNode,Node _newNode)
@@ -209,6 +227,12 @@ public class GamePlayManager : MonoBehaviour
         _newNode.occupiedBall = _currentNode.occupiedBall;
         _currentNode.occupiedBall = null;
         _newNode.occupiedBall.transform.position = _newNode.transform.position;
+        if (CheckExplode(_newNode))
+        {
+            ExplodeBalls();
+        }
+        currentSelectedNode = _newNode;
+        SwitchState(GameState.SpawnBall);
     }
     public void DeSelectNode()
     {
@@ -216,6 +240,11 @@ public class GamePlayManager : MonoBehaviour
         {
             node.selectedballSprite.SetActive(false);
             node.isSelected = false;
+            if (node.occupiedBall != null)
+            {
+                node.occupiedBall.ballAni.SetBool("isSelected", false);
+            }
+
         }
     }
     public void SwitchState(GameState _newState)
@@ -225,9 +254,10 @@ public class GamePlayManager : MonoBehaviour
         {
             case GameState.GenerateMap:
                 GenerateNewGrid(rows, columns);
+                GetBallToSpawn(20);
                 StartCoroutine((SpawnBalls(20)));
                 break;
-            case GameState.Win:
+            case GameState.Pause:
                 break;
             case GameState.Lose:
                 OnLosingGame?.Invoke(UIManager.instance.currentScore);
@@ -237,7 +267,15 @@ public class GamePlayManager : MonoBehaviour
             case GameState.SelectNodeToPlaceBall:
                 break;
             case GameState.SpawnBall:
-                StartCoroutine(SpawnBalls(1));
+                StartCoroutine(SpawnBalls(ballToSpawn));
+                break;
+            case GameState.GetballToSpawn:
+                SaveManager.instance.saveData.nodeDataList = nodeList;
+                SaveManager.instance.saveData.currentGamestateData  = currentState;
+                SaveManager.instance.SaveGame();
+                GetBallToSpawn(ballToSpawn);
+                UIManager.instance.DisplayBall(ballToSpawnList);
+
                 break;
             default:
                 break;
@@ -247,10 +285,12 @@ public class GamePlayManager : MonoBehaviour
     {
         int col, row, count = 0;
         Node nodeToCompare;
-        ////Check in row
+        ////Check in col
         // check forward
         bool breakLoop = false;
-        col = (int)_checkNode.transform.position.x;
+        col = (int)_checkNode.transform.position.x+1;
+        Node tempNode = _checkNode;
+        checkNodeList.Add(_checkNode);
         do
         {
             breakLoop = true;
@@ -259,7 +299,11 @@ public class GamePlayManager : MonoBehaviour
             {
                 if (nodeToCompare.occupiedBall != null)
                 {
-                    if (nodeToCompare.occupiedBall.colorValue == _checkNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow || _checkNode.occupiedBall.type == BallType.Rainbow)
+                    if (tempNode.occupiedBall.type == BallType.Rainbow)
+                    {
+                        tempNode = GetNodebyPosition(new Vector2(_checkNode.transform.position.x + 1, _checkNode.transform.position.y));
+                    }
+                    if (nodeToCompare.occupiedBall.colorValue == tempNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow)
                     {
                         checkNodeList.Add(nodeToCompare);
 
@@ -292,7 +336,18 @@ public class GamePlayManager : MonoBehaviour
             {
                 if (nodeToCompare.occupiedBall != null)
                 {
-                    if (nodeToCompare.occupiedBall.colorValue == _checkNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow || _checkNode.occupiedBall.type == BallType.Rainbow)
+                    if (/*tempNode.occupiedBall.type == BallType.Rainbow &&*/ tempNode.occupiedBall.colorValue != GetNodebyPosition(new Vector2(_checkNode.transform.position.x - 1, _checkNode.transform.position.y)).occupiedBall.colorValue && count<4)
+                    {
+                        count = 0;
+                        checkNodeList.Clear();
+                        checkNodeList.Add(_checkNode);
+                    }
+                    if(count<4)
+                    {
+                        tempNode = GetNodebyPosition(new Vector2(_checkNode.transform.position.x - 1, _checkNode.transform.position.y));
+                    }
+
+                    if (nodeToCompare.occupiedBall.colorValue == tempNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow)
                     {
                         checkNodeList.Add(nodeToCompare);
 
@@ -315,15 +370,20 @@ public class GamePlayManager : MonoBehaviour
             col--;
         }
         while (breakLoop);
-        if (count > 4)
+
+        if (count > 3)
         {
             return true;
         }
+
         checkNodeList.Clear();
-        ////Check in collumn
+
+        ////Check in row
         // check forward
         count = 0;
-        row = (int)_checkNode.transform.position.y;
+        tempNode = _checkNode;
+        checkNodeList.Add(_checkNode);
+        row = (int)_checkNode.transform.position.y+1;
         do
         {
             breakLoop = true;
@@ -332,7 +392,11 @@ public class GamePlayManager : MonoBehaviour
             {
                 if (nodeToCompare.occupiedBall != null)
                 {
-                    if (nodeToCompare.occupiedBall.colorValue == _checkNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow || _checkNode.occupiedBall.type == BallType.Rainbow)
+                    if (tempNode.occupiedBall.type == BallType.Rainbow)
+                    {
+                        tempNode = GetNodebyPosition(new Vector2(_checkNode.transform.position.x, _checkNode.transform.position.y+1));
+                    }
+                    if (nodeToCompare.occupiedBall.colorValue == tempNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow)
                     {
                         checkNodeList.Add(nodeToCompare);
 
@@ -370,7 +434,18 @@ public class GamePlayManager : MonoBehaviour
             {
                 if (nodeToCompare.occupiedBall != null)
                 {
-                    if (nodeToCompare.occupiedBall.colorValue == _checkNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow || _checkNode.occupiedBall.type == BallType.Rainbow)
+                    if (tempNode.occupiedBall.colorValue != GetNodebyPosition(new Vector2(_checkNode.transform.position.x , _checkNode.transform.position.y-1)).occupiedBall.colorValue && count < 4)
+                    {
+                        count = 0;
+                        checkNodeList.Clear();
+                        checkNodeList.Add(_checkNode);
+                    }
+                    if (count < 4)
+                    {
+                        tempNode = GetNodebyPosition(new Vector2(_checkNode.transform.position.x, _checkNode.transform.position.y-1));
+                    }
+
+                    if (nodeToCompare.occupiedBall.colorValue == tempNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow)
                     {
                         checkNodeList.Add(nodeToCompare);
                         count++;
@@ -391,7 +466,7 @@ public class GamePlayManager : MonoBehaviour
             }
             row--;
         } while (breakLoop);
-        if (count > 4)
+        if (count > 3)
         {
             return true;
         }
@@ -399,8 +474,10 @@ public class GamePlayManager : MonoBehaviour
 
         ////Check in diagonal line
         //the first diag
-        col = (int)_checkNode.transform.position.x;
-        row = (int)_checkNode.transform.position.y;
+        col = (int)_checkNode.transform.position.x + 1;
+        row = (int)_checkNode.transform.position.y + 1;
+        tempNode = _checkNode;
+        checkNodeList.Add(_checkNode);
         count = 0;
         do
         {
@@ -410,7 +487,11 @@ public class GamePlayManager : MonoBehaviour
             {
                 if (nodeToCompare.occupiedBall != null)
                 {
-                    if (nodeToCompare.occupiedBall.colorValue == _checkNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow || _checkNode.occupiedBall.type == BallType.Rainbow)
+                    if (tempNode.occupiedBall.type == BallType.Rainbow)
+                    {
+                        tempNode = GetNodebyPosition(new Vector2(_checkNode.transform.position.x + 1, _checkNode.transform.position.y + 1));
+                    }
+                    if (nodeToCompare.occupiedBall.colorValue == tempNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow)
                     {
                         checkNodeList.Add(nodeToCompare);
 
@@ -446,7 +527,19 @@ public class GamePlayManager : MonoBehaviour
             {
                 if (nodeToCompare.occupiedBall != null)
                 {
-                    if (nodeToCompare.occupiedBall.colorValue == _checkNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow || _checkNode.occupiedBall.type == BallType.Rainbow)
+
+                    if (tempNode.occupiedBall.colorValue != GetNodebyPosition(new Vector2(_checkNode.transform.position.x - 1, _checkNode.transform.position.y - 1)).occupiedBall.colorValue && count < 4)
+                    {
+                        count = 0;
+                        checkNodeList.Clear();
+                        checkNodeList.Add(_checkNode);
+                    }
+                    if (count < 4)
+                    {
+                        tempNode = GetNodebyPosition(new Vector2(_checkNode.transform.position.x - 1, _checkNode.transform.position.y - 1));
+                    }
+
+                    if (nodeToCompare.occupiedBall.colorValue == tempNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow)
                     {
                         checkNodeList.Add(nodeToCompare);
                         count++;
@@ -468,16 +561,18 @@ public class GamePlayManager : MonoBehaviour
             col--;
             row--;
         } while (breakLoop);
-        if (count > 4)
+        if (count > 3)
         {
             return true;
         }
         checkNodeList.Clear();
 
-        ////Check in diagonal line
-        //the second diag
-        col = (int)_checkNode.transform.position.x;
-        row = (int)_checkNode.transform.position.y;
+        //////Check in diagonal line
+        ////the second diag
+        tempNode = _checkNode;
+        col = (int)_checkNode.transform.position.x - 1;
+        row = (int)_checkNode.transform.position.y + 1;
+        checkNodeList.Add(_checkNode);
         count = 0;
         do
         {
@@ -487,7 +582,11 @@ public class GamePlayManager : MonoBehaviour
             {
                 if (nodeToCompare.occupiedBall != null)
                 {
-                    if (nodeToCompare.occupiedBall.colorValue == _checkNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow || _checkNode.occupiedBall.type == BallType.Rainbow)
+                    if (tempNode.occupiedBall.type == BallType.Rainbow)
+                    {
+                        tempNode = GetNodebyPosition(new Vector2(_checkNode.transform.position.x - 1, _checkNode.transform.position.y + 1));
+                    }
+                    if (nodeToCompare.occupiedBall.colorValue == tempNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow)
                     {
                         checkNodeList.Add(nodeToCompare);
 
@@ -523,7 +622,18 @@ public class GamePlayManager : MonoBehaviour
             {
                 if (nodeToCompare.occupiedBall != null)
                 {
-                    if (nodeToCompare.occupiedBall.colorValue == _checkNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow || _checkNode.occupiedBall.type == BallType.Rainbow)
+                    if (tempNode.occupiedBall.colorValue != GetNodebyPosition(new Vector2(_checkNode.transform.position.x + 1, _checkNode.transform.position.y - 1)).occupiedBall.colorValue && count < 4)
+                    {
+                        count = 0;
+                        checkNodeList.Clear();
+                        checkNodeList.Add(_checkNode);
+                    }
+                    if (count < 4)
+                    {
+                        tempNode = GetNodebyPosition(new Vector2(_checkNode.transform.position.x + 1, _checkNode.transform.position.y - 1));
+                    }
+
+                    if (nodeToCompare.occupiedBall.colorValue == tempNode.occupiedBall.colorValue || nodeToCompare.occupiedBall.type == BallType.Rainbow)
                     {
                         checkNodeList.Add(nodeToCompare);
                         count++;
@@ -545,7 +655,7 @@ public class GamePlayManager : MonoBehaviour
             col++;
             row--;
         } while (breakLoop);
-        if (count > 4)
+        if (count > 3)
         {
             return true;
         }
@@ -569,14 +679,13 @@ public class GamePlayManager : MonoBehaviour
     {
         Debug.Log(checkNodeList.Count);
         UIManager.instance.UpdateAndDisplayScore(checkNodeList.Count);
-            foreach (var checkNode in checkNodeList)
-            {
-            //checkNode.occupiedBall.transform.DOScale(Vector2.zero, 0.5f).SetEase(Ease.InBounce).OnComplete(() => { checkNode.occupiedBall.gameObject.SetActive(false); });
+        foreach (var checkNode in checkNodeList)
+        {
             checkNode.occupiedBall.OnExplode();
             checkNode.occupiedBall.gameObject.SetActive(false);
             PoolingManager.instance.DeActiveBall(checkNode.occupiedBall);
-                checkNode.occupiedBall = null;
-            }
+            checkNode.occupiedBall = null;
+        }
         OnUpdateScoreGame?.Invoke(checkNodeList.Count);
         checkNodeList.Clear();
 
@@ -589,4 +698,25 @@ public class GamePlayManager : MonoBehaviour
             SwitchState(GameState.Lose);
         }    
     }
+    public void PauseGameManager()
+    {   
+        GameState stateBeforePause= GameState.SelectBall;// default value
+        if(currentState != GameState.Pause)
+        {
+            stateBeforePause = currentState;
+            SwitchState(GameState.Pause);
+            Time.timeScale = 0;
+        }
+        else
+        {
+            Time.timeScale = 1;
+            SwitchState(stateBeforePause);
+        }
+        OnPauseGame?.Invoke(currentState);
+    }
+    public void ExitGame()
+    {
+        Application.Quit();
+    }
+
 }

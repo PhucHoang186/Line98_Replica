@@ -1,7 +1,7 @@
-using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
-
+using UnityEngine.UI;
 public class UIManager : MonoBehaviour
 {
     public static UIManager instance;
@@ -14,6 +14,10 @@ public class UIManager : MonoBehaviour
     //timer
     float timer;
     [SerializeField] TMP_Text timerText;
+    //game menu
+    [SerializeField] GameObject PauseMenu;
+    //ball display
+    [SerializeField] Image[] ballImages;
     private void Awake()
     {
         if (instance == null)
@@ -21,6 +25,7 @@ public class UIManager : MonoBehaviour
             instance = this;
         }
         UpdateAndDisplayScore(0);
+        PauseMenu.SetActive(false);
     }
     void UpdateTimer()
     {
@@ -68,11 +73,39 @@ public class UIManager : MonoBehaviour
     {
         GamePlayManager.OnUpdateScoreGame += UpdateAndDisplayScore;
         GamePlayManager.OnLosingGame += UpdateBestScore;
+        GamePlayManager.OnPauseGame += UpdatePauseMenu;
+
     }
     private void OnDisable()
     {
         GamePlayManager.OnUpdateScoreGame -= UpdateAndDisplayScore;
         GamePlayManager.OnLosingGame -= UpdateBestScore;
+        GamePlayManager.OnPauseGame -= UpdatePauseMenu;
     }
+    public void UpdatePauseMenu(GameState _currentState)
+    {
+        if(_currentState != GameState.Pause)
+        {
+            PauseMenu.SetActive(false);
+        }
+        else
+        {
+            PauseMenu.SetActive(true);
+        }
+    }
+    public void DisplayBall(List<Ball> _ballList)
+    {
+        Debug.Log(_ballList.Count);
+        if (_ballList.Count == 0)
+            return;
+        int i = 0;
+        foreach (var ball in _ballList)
+        {
+            ballImages[i].sprite = ball.GetComponentInChildren<SpriteRenderer>().sprite;
+            ballImages[i].color = ball.GetComponentInChildren<SpriteRenderer>().color;
 
+            i++;
+        }
+
+    }
 }

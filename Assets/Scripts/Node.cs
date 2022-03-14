@@ -1,8 +1,7 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
-public class Node : MonoBehaviour
+[System.Serializable]
+public class Node :MonoBehaviour
 {
     //Hover 
     [SerializeField]GameObject hightlightSprite;
@@ -24,15 +23,17 @@ public class Node : MonoBehaviour
     }
     private void OnMouseDown()
     {
+        
         if (GamePlayManager.instance.currentState == GameState.SelectBall)
         {
             if (occupiedBall != null)
             {
 
                 GamePlayManager.instance.SelectBall(this);
+                return;
             }
         }
-        else if (GamePlayManager.instance.currentState == GameState.SelectNodeToPlaceBall)
+        if (GamePlayManager.instance.currentState == GameState.SelectNodeToPlaceBall)
         {
             if (occupiedBall == null)
             {
@@ -42,8 +43,9 @@ public class Node : MonoBehaviour
             }
             else
             {
-
                 GamePlayManager.instance.SwitchState(GameState.SelectBall);
+                GamePlayManager.instance.SelectBall(this);
+
             }
         }
     }
