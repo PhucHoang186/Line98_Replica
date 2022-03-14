@@ -24,3 +24,5 @@ Extra feature:
 Some Notes: 
 -	You can reset best score for testing by check the needReset checkbox in GameplayManager Script (locate in “Generate grid” Game Object)
 -	You can switch to lose state for testing by press  ”L” when in play mode.
+-	If you can see the scene please go to Assets => Scenes => SampleScene to open, and Display at 
+1920:1080 resolution.
